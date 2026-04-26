@@ -98,6 +98,30 @@ export default function EditorPage() {
 
 
 
+  // Inject CSS per user color for Yjs cursors
+  function injectCursorStyle(clientId, color) {
+    const styleId = `yjs-cursor-${clientId}`;
+    let style = document.getElementById(styleId);
+    
+    if (!style) {
+      style = document.createElement('style');
+      style.id = styleId;
+      document.head.appendChild(style);
+    }
+
+    style.innerHTML = `
+      .yRemoteSelection-${clientId} {
+        background-color: ${color}40; /* 25% opacity */
+      }
+      .yRemoteSelectionHead-${clientId} {
+        position: absolute;
+        border-left: 2px solid ${color};
+        height: 100%;
+        box-sizing: border-box;
+      }
+    `;
+  }
+
   // Monaco Editor mounts
   async function handleEditorMount(editor, monaco) {
     editorRef.current = editor;
@@ -121,6 +145,15 @@ export default function EditorPage() {
     provider.awareness.setLocalStateField('user', {
       name: usernameRef.current,
       color: myColorRef.current
+    });
+
+    // 5. Inject styles for other users dynamically
+    provider.awareness.on('change', () => {
+      provider.awareness.getStates().forEach((state, clientId) => {
+        if (state.user && state.user.color) {
+          injectCursorStyle(clientId, state.user.color);
+        }
+      });
     });
   }
 
