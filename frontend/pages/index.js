@@ -44,29 +44,58 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden"
+      style={{ background: 'linear-gradient(145deg, #0a0a0f 0%, #0d1117 50%, #0a0f1a 100%)' }}
+    >
+      {/* Subtle background glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full opacity-[0.07]"
+        style={{ background: 'radial-gradient(circle, #6366f1 0%, transparent 70%)' }}
+      />
+
+      <div className="w-full max-w-md relative z-10">
 
         {/* Header */}
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Code<span className="text-blue-500">Collab</span>
-          </h1>
-          <p className="text-gray-400">Real-time collaborative code editor</p>
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <svg className="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            <h1 className="text-3xl font-bold tracking-tight" style={{ color: '#e2e8f0' }}>
+              Code<span style={{ color: '#818cf8' }}>Collab</span>
+            </h1>
+          </div>
+          <p className="text-sm" style={{ color: '#64748b' }}>
+            Real-time collaborative code editor
+          </p>
         </div>
 
         {/* Card */}
-        <div className="bg-gray-900 rounded-2xl p-8 shadow-xl border border-gray-800">
+        <div className="rounded-2xl p-8 shadow-2xl"
+          style={{
+            background: 'rgba(15, 18, 25, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            backdropFilter: 'blur(20px)',
+          }}
+        >
 
           {/* Username Input */}
           <div className="mb-6">
-            <label className="block text-gray-400 text-sm mb-2">Your Name</label>
+            <label className="block text-xs font-medium mb-2 tracking-wide uppercase" style={{ color: '#64748b' }}>
+              Display Name
+            </label>
             <input
               type="text"
               placeholder="Enter your name"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 outline-none border border-gray-700 focus:border-blue-500 transition"
+              className="w-full rounded-xl px-4 py-3 outline-none text-sm transition-all duration-200 input-glow"
+              style={{
+                background: 'rgba(255, 255, 255, 0.04)',
+                color: '#e2e8f0',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+              }}
+              onFocus={(e) => e.target.style.borderColor = 'rgba(99, 102, 241, 0.5)'}
+              onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.08)'}
             />
           </div>
 
@@ -75,14 +104,20 @@ export default function Home() {
             <button
               onClick={handleCreateRoom}
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
+              className="w-full text-white font-semibold py-3 rounded-xl transition-all duration-200 text-sm disabled:opacity-50 cursor-pointer hover:shadow-lg hover:shadow-indigo-500/20 active:scale-[0.98]"
+              style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
             >
               {loading && !showJoin ? 'Creating...' : '+ Create New Room'}
             </button>
 
             <button
               onClick={() => { setShowJoin(!showJoin); setError(''); }}
-              className="w-full bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-lg transition border border-gray-700"
+              className="w-full text-sm font-semibold py-3 rounded-xl transition-all duration-200 cursor-pointer hover:bg-white/[0.06] active:scale-[0.98]"
+              style={{
+                color: '#94a3b8',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+              }}
             >
               Join Existing Room
             </button>
@@ -96,12 +131,20 @@ export default function Home() {
                 placeholder="Enter Room ID"
                 value={roomId}
                 onChange={(e) => setRoomId(e.target.value)}
-                className="w-full bg-gray-800 text-white rounded-lg px-4 py-3 outline-none border border-gray-700 focus:border-blue-500 transition mb-3"
+                className="w-full rounded-xl px-4 py-3 outline-none text-sm transition-all duration-200 mb-3 input-glow"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  color: '#e2e8f0',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
+                onFocus={(e) => e.target.style.borderColor = 'rgba(34, 197, 94, 0.5)'}
+                onBlur={(e) => e.target.style.borderColor = 'rgba(255, 255, 255, 0.08)'}
               />
               <button
                 onClick={handleJoinRoom}
                 disabled={loading}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
+                className="w-full text-white font-semibold py-3 rounded-xl transition-all duration-200 text-sm disabled:opacity-50 cursor-pointer hover:shadow-lg hover:shadow-emerald-500/20 active:scale-[0.98]"
+                style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}
               >
                 {loading ? 'Joining...' : 'Join Room →'}
               </button>
@@ -110,12 +153,16 @@ export default function Home() {
 
           {/* Error message */}
           {error && (
-            <p className="mt-4 text-red-400 text-sm text-center">{error}</p>
+            <div className="mt-4 text-sm text-center py-2 px-3 rounded-lg"
+              style={{ color: '#f87171', background: 'rgba(239, 68, 68, 0.1)' }}
+            >
+              {error}
+            </div>
           )}
         </div>
 
-        <p className="text-center text-gray-600 text-sm mt-6">
-          No account needed. Just enter your name and start coding.
+        <p className="text-center text-xs mt-6" style={{ color: '#475569' }}>
+          No account needed — just enter your name and start coding.
         </p>
       </div>
     </div>

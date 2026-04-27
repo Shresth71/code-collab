@@ -29,7 +29,8 @@ export default function EditorPage() {
   const [copied, setCopied] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [myColor, setMyColor] = useState('#4ECDC4');
-
+  const [typingUsers, setTypingUsers] = useState(new Set());
+  const [toasts, setToasts] = useState([]);
   const codeRef = useRef('');
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
@@ -37,6 +38,8 @@ export default function EditorPage() {
   const myColorRef = useRef('#4ECDC4');
   const roomIdRef = useRef('');
   const yProviderRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const toastIdRef = useRef(0);
 
   useEffect(() => {
     const savedUsername = sessionStorage.getItem('username');
@@ -84,7 +87,33 @@ export default function EditorPage() {
       setMessages(prev => [...prev, message]);
     });
 
+    // Typing indicator events
+    socket.on('user-typing', ({ username: typingName }) => {
+      setTypingUsers(prev => new Set(prev).add(typingName));
+    });
 
+    socket.on('user-stop-typing', ({ username: typingName }) => {
+      setTypingUsers(prev => {
+        const next = new Set(prev);
+        next.delete(typingName);
+        return next;
+      });
+    });
+
+    // Join/Leave toast events
+    socket.on('user-joined', ({ username: joinedName, color }) => {
+      addToast(`${joinedName} joined the room`, 'join', color);
+    });
+
+    socket.on('user-left', ({ username: leftName, color }) => {
+      addToast(`${leftName} left the room`, 'leave', color);
+      // Also clear them from typing
+      setTypingUsers(prev => {
+        const next = new Set(prev);
+        next.delete(leftName);
+        return next;
+      });
+    });
 
     return () => {
       if (yProviderRef.current) yProviderRef.current.destroy();
@@ -92,6 +121,10 @@ export default function EditorPage() {
       socket.off('room-users');
       socket.off('language-change');
       socket.off('receive-message');
+      socket.off('user-typing');
+      socket.off('user-stop-typing');
+      socket.off('user-joined');
+      socket.off('user-left');
       socket.disconnect();
     };
   }, [roomId, username]);
@@ -155,6 +188,29 @@ export default function EditorPage() {
         }
       });
     });
+
+    // 6. Detect LOCAL typing only (onDidType fires only for real keyboard input,
+    //    not for programmatic changes from Yjs sync)
+    editor.onDidType(() => {
+      socket.emit('typing', { roomId: roomIdRef.current, username: usernameRef.current });
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('stop-typing', { roomId: roomIdRef.current, username: usernameRef.current });
+      }, 1500);
+    });
+  }
+
+  // --- Toast notification system ---
+  function addToast(message, type = 'info', color = null) {
+    const id = ++toastIdRef.current;
+    setToasts(prev => [...prev, { id, message, type, color, exiting: false }]);
+    // Start exit animation after 2.5s, then remove after animation completes
+    setTimeout(() => {
+      setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, 300);
+    }, 2500);
   }
 
   function handleCodeChange(value) {
@@ -173,6 +229,7 @@ export default function EditorPage() {
   function copyRoomId() {
     navigator.clipboard.writeText(roomId);
     setCopied(true);
+    addToast('Room ID copied to clipboard!', 'copy');
     setTimeout(() => setCopied(false), 2000);
   }
 
@@ -238,27 +295,38 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: '#0a0a0f' }}>
 
       {/* Top Bar */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-white font-bold text-lg">
-            Code<span className="text-blue-500">Collab</span>
-          </h1>
+      <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: 'rgba(15, 18, 25, 0.95)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <svg className="w-5 h-5" style={{ color: '#818cf8' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            <h1 className="font-bold text-base" style={{ color: '#e2e8f0' }}>
+              Code<span style={{ color: '#818cf8' }}>Collab</span>
+            </h1>
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-5" style={{ background: 'rgba(255,255,255,0.08)' }} />
 
           {/* Room ID and Copy Button */}
-          <div className="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-1.5 py-1">
-            <span className="text-gray-200 text-sm font-medium tracking-wide">{roomId}</span>
+          <div className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <span className="text-xs font-mono tracking-wider" style={{ color: '#94a3b8' }}>{roomId}</span>
             <button
               onClick={copyRoomId}
               title="Copy Room ID"
-              className="text-gray-400 hover:text-white transition flex items-center justify-center hover:bg-gray-700 rounded-md p-1.5"
+              className="flex items-center justify-center rounded-md p-1 transition-all duration-150 cursor-pointer"
+              style={{ color: '#64748b' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; }}
             >
               {copied ? (
-                <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                <svg className="w-3.5 h-3.5" style={{ color: '#4ade80' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
               ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
               )}
             </button>
           </div>
@@ -267,7 +335,8 @@ export default function EditorPage() {
           <div className="relative">
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="bg-gray-800 text-gray-300 text-sm px-3 py-1.5 rounded-lg border border-gray-700 flex items-center gap-2 hover:bg-gray-700 transition outline-none"
+              className="text-sm px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all duration-150 outline-none cursor-pointer"
+              style={{ background: 'rgba(255,255,255,0.04)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.06)' }}
             >
               {(() => {
                 const opt = LANGUAGE_OPTIONS.find(o => o.value === language) || LANGUAGE_OPTIONS[0];
@@ -275,14 +344,14 @@ export default function EditorPage() {
                   <>
                     <span className={`font-bold ${opt.color} w-6 text-center`}>{opt.initial}</span>
                     {opt.label}
-                    <svg className="w-4 h-4 text-gray-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                    <svg className="w-3.5 h-3.5 ml-1" style={{ color: '#475569' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                   </>
                 );
               })()}
             </button>
             
             {dropdownOpen && (
-              <div className="absolute top-full mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+              <div className="absolute top-full mt-1 w-full rounded-lg shadow-2xl z-50 overflow-hidden" style={{ background: '#141720', border: '1px solid rgba(255,255,255,0.08)' }}>
                 {LANGUAGE_OPTIONS.map(opt => (
                   <button
                     key={opt.value}
@@ -290,10 +359,13 @@ export default function EditorPage() {
                       handleLanguageChange(opt.value);
                       setDropdownOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-700 transition ${language === opt.value ? 'bg-gray-700/50' : ''}`}
+                    className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-all duration-150 cursor-pointer"
+                    style={{ background: language === opt.value ? 'rgba(99,102,241,0.1)' : 'transparent' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = language === opt.value ? 'rgba(99,102,241,0.1)' : 'transparent'}
                   >
                     <span className={`font-bold ${opt.color} w-6 text-center`}>{opt.initial}</span>
-                    <span className="text-gray-200">{opt.label}</span>
+                    <span style={{ color: '#e2e8f0' }}>{opt.label}</span>
                   </button>
                 ))}
               </div>
@@ -306,16 +378,26 @@ export default function EditorPage() {
           {users.map((user, i) => (
             <div
               key={i}
-              className="text-white text-xs px-3 py-1 rounded-full font-medium flex items-center gap-1.5"
-              style={{ backgroundColor: user.color }}
+              className="text-white text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5"
+              style={{ backgroundColor: user.color + '22', border: `1px solid ${user.color}44`, color: user.color }}
             >
-              <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
-              {user.username}
+              <span className="w-1.5 h-1.5 rounded-full status-dot" style={{ backgroundColor: user.color }}></span>
+              <span style={{ color: '#e2e8f0' }}>{user.username}</span>
+              {typingUsers.has(user.username) && user.username !== username && (
+                <span className="flex items-center gap-[2px] ml-0.5">
+                  <span className="typing-dot" style={{ backgroundColor: user.color }}></span>
+                  <span className="typing-dot" style={{ backgroundColor: user.color }}></span>
+                  <span className="typing-dot" style={{ backgroundColor: user.color }}></span>
+                </span>
+              )}
             </div>
           ))}
           <button
             onClick={() => router.push('/')}
-            className="ml-2 bg-red-600 hover:bg-red-700 text-white text-sm px-3 py-1 rounded-lg transition"
+            className="ml-1 text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-150 cursor-pointer active:scale-95"
+            style={{ color: '#f87171', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
           >
             Leave
           </button>
@@ -442,6 +524,36 @@ export default function EditorPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Toast Notifications */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-lg text-white text-sm font-medium backdrop-blur-sm ${
+              toast.exiting ? 'toast-exit' : 'toast-enter'
+            }`}
+            style={{
+              backgroundColor: toast.type === 'join'
+                ? 'rgba(16, 185, 129, 0.9)'
+                : toast.type === 'leave'
+                  ? 'rgba(239, 68, 68, 0.9)'
+                  : 'rgba(59, 130, 246, 0.9)',
+            }}
+          >
+            {toast.type === 'join' && (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+            )}
+            {toast.type === 'leave' && (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            )}
+            {toast.type === 'copy' && (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+            )}
+            {toast.message}
+          </div>
+        ))}
       </div>
     </div>
   );

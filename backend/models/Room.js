@@ -20,9 +20,12 @@ const roomSchema = new mongoose.Schema({
     default: '', // Start with an empty editor
   },
   // Timestamp to track when the room was created
+  // The 'expires' option creates a TTL index — MongoDB will automatically
+  // delete rooms 24 hours after creation to keep the database clean
   createdAt: {
     type: Date,
     default: Date.now,
+    expires: 86400, // 24 hours in seconds (24 * 60 * 60)
   }
 });
 

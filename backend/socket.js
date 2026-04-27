@@ -91,6 +91,9 @@ function initSocket(server) {
         });
       }
 
+      // Notify other users in the room that someone joined
+      socket.to(roomId).emit('user-joined', { username, color });
+
       // Broadcast the updated user list to everyone currently in the room
       io.to(roomId).emit('room-users', roomUsers[roomId]);
     });
@@ -109,6 +112,16 @@ function initSocket(server) {
       Room.findOneAndUpdate({ roomId }, { language }).catch(console.error);
     });
 
+    // Event: User is typing in the editor
+    socket.on('typing', ({ roomId, username }) => {
+      socket.to(roomId).emit('user-typing', { username });
+    });
+
+    // Event: User stopped typing
+    socket.on('stop-typing', ({ roomId, username }) => {
+      socket.to(roomId).emit('user-stop-typing', { username });
+    });
+
     // Event: User sends a chat message
     socket.on('send-message', ({ roomId, message }) => {
       // Broadcast the message to all OTHER users in the room
@@ -121,15 +134,22 @@ function initSocket(server) {
 
       // Iterate through all rooms to find and remove the disconnected user
       for (const roomId in roomUsers) {
-        const beforeCount = roomUsers[roomId].length;
+        // Find the user who disconnected so we can notify others
+        const leavingUser = roomUsers[roomId].find(
+          user => user.socketId === socket.id
+        );
         
         // Filter out the disconnected user
         roomUsers[roomId] = roomUsers[roomId].filter(
           user => user.socketId !== socket.id
         );
         
-        // If the user was actually in this room, notify the remaining users of the updated list
-        if (roomUsers[roomId].length !== beforeCount) {
+        // If the user was actually in this room, notify the remaining users
+        if (leavingUser) {
+          io.to(roomId).emit('user-left', {
+            username: leavingUser.username,
+            color: leavingUser.color
+          });
           io.to(roomId).emit('room-users', roomUsers[roomId]);
         }
       }
